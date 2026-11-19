@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>acmebox · 证书申请</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">
+      <span class="brand-name">acmebox</span>
+      <span class="brand-sub" id="barSub">Let's Encrypt</span>
+    </div>
+    <div class="bar-actions">
+      <span class="chip" id="barEmail" hidden></span>
+      <button class="ghost small" id="btnNotice" type="button">使用须知</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <ol class="steps" id="steps">
+    <li><button type="button" data-go="1" aria-current="step"><b>1</b><span class="lbl">密钥</span></button></li>
+    <li><button type="button" data-go="2"><b>2</b><span class="lbl">域名</span></button></li>
+    <li><button type="button" data-go="3"><b>3</b><span class="lbl">验证</span></button></li>
+    <li><button type="button" data-go="4"><b>4</b><span class="lbl">证书</span></button></li>
+    <li><button type="button" data-go="renew"><span class="lbl">续期</span></button></li>
+  </ol>
+
+  <!-- 第 1 步。面板 id 必须是 p1–p4：app.js 的 go() 靠 'p' + 步骤号切面板，续期用 p5。
+       CA 卡片不在这里写，#caCards 是空的，由 renderCaCards() 按 /api/config 渲染。 -->
+  <section class="panel on" id="p1" aria-labelledby="h1">
+    <h2 id="h1">服务与密钥</h2>
+    <div class="field">
+      <label class="lbl">证书颁发机构</label>
+      <div class="cards two" id="caCards"></div>
+    </div>
+
+    <div class="field">
+      <label class="lbl" for="email">联系邮箱<span class="opt">用于到期提醒</span></label>
+      <input type="email" id="email" placeholder="you@example.com" autocomplete="email" spellcheck="false">
+    </div>
+
+    <div class="field" id="eabBox" hidden>
+      <label class="lbl">EAB 凭据<span class="opt">这两项必须成对填写</span></label>
+      <div class="row" style="margin-bottom:8px">
+        <input type="text" id="eabKid" placeholder="EAB KID" spellcheck="false" autocomplete="off">
+      </div>
+      <input type="password" id="eabKey" placeholder="HMAC KEY（base64url）" spellcheck="false" autocomplete="off">
+      <p class="note">
+        ZeroSSL 在控制台 Developer 里取；Google 在 Cloud 控制台生成。
+        同一个 EAB 只能绑定一个账户私钥，换设备时要把账户私钥一起带过去。
+        导入记录时已保存的 EAB 会留在服务器上，两个输入框留空就不会动它；
+        只有想更换时才需要把两项都重新填。
+      </p>
+    </div>
+
+    <div class="field">
+      <label class="lbl">证书私钥<span class="opt">决定签发出来的证书类型</span></label>
+      <div class="row" id="keyRow">
+        <button type="button" class="small" data-key="rsa2048">RSA 2048</button>
+        <button type="button" class="small" data-key="rsa3072">RSA 3072</button>
+        <button type="button" class="small" data-key="ecc256">ECC P-256</button>
+        <button type="button" class="small" data-key="ecc384">ECC P-384</button>
+        <button type="button" class="small outline" id="btnImportKey">手动填写</button>
+      </div>
+      <p class="note" id="keyState">尚未生成。RSA 适用性最广；ECC 证书体积小、性能好，但老客户端可能不认。</p>
+    </div>
+
+    <div class="field">
+      <label class="lbl">账户私钥<span class="opt">一个私钥就是一个账户</span></label>
+      <div class="row">
+        <button type="button" class="small" id="btnAcctKey">生成账户密钥并注册</button>
+        <button type="button" class="small outline" id="btnImportAcct">导入已有</button>
+      </div>
+      <p class="note" id="acctState">
+        建议这台机器固定用一个账户私钥，多次续期时可以复用已有的域名验证结果。
+      </p>
+    </div>
+
+    <div class="msg" id="m1" hidden></div>
+
+    <div class="actions">
+      <button type="button" class="primary" id="btnStep1">下一步</button>
+    </div>
+  </section>
+
+  <!-- 第 2 步：域名与下单。这一页的通配符说明是唯一解释 *.example.com 不含裸域的地方。 -->
+  <section class="panel" id="p2" aria-labelledby="h2t">
+    <h2 id="h2t">要签发的域名</h2>
+    <div class="field">
+      <label class="lbl" for="domains">域名</label>
+      <textarea id="domains" rows="3" spellcheck="false" placeholder="example.com, *.example.com"></textarea>
+      <p class="note">
+        通配符只能放在最左边，且只支持 DNS 验证。注意 <code>*.example.com</code>
+        <strong>不包含</strong> <code>example.com</code>，两个都要的话请都写上。
+      </p>
+    </div>
+
+    <div class="msg" id="m2" hidden></div>
+
+    <div class="out" id="orderOut" hidden>
+      <div class="out-hd"><span class="t">订单</span><span id="orderStatus" class="status idle">—</span></div>
+      <div id="authzList"></div>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="ghost" data-go="1">上一步</button>
+      <button type="button" class="primary" id="btnStep2">创建订单</button>
+    </div>
+  </section>
+
+  <!-- 第 3 步：TXT 记录与验证。#dnsList 由 renderDnsPlans() 整块重绘，不要在这里预写记录行；
+       没有订单时只露出 dnsEmpty，验证按钮的 disabled 状态也归它管。 -->
+  <section class="panel" id="p3" aria-labelledby="h3t">
+    <h2 id="h3t">验证域名所有权</h2>
+
+    <div class="empty" id="dnsEmpty">还没有创建订单。先到上一步填好域名。</div>
+
+    <p class="hint" id="dnsHint" hidden>到 DNS 服务商后台把这些记录添为 TXT。同一记录名下有几个值就加几条。</p>
+
+    <div class="out" id="dnsOut" hidden>
+      <div class="out-hd"><span class="t">需要的 TXT 记录</span></div>
+      <div id="dnsList"></div>
+    </div>
+
+    <p class="note" id="dnsNote2" hidden>
+      添加后等 DNS 生效（通常一两分钟）。用 <code>nslookup -type=TXT 记录名</code>
+      确认能看到对应值，再点下面的按钮。
+    </p>
+
+    <div class="msg" id="m3" hidden></div>
+
+    <div class="actions">
+      <button type="button" class="ghost" data-go="2">上一步</button>
+      <button type="button" class="primary" id="btnVerify" disabled>开始验证</button>
+    </div>
+  </section>
+
+  <!-- 第 4 步：签发与下载。certArea 默认隐藏，签发成功才显示；m4mem 是独立警告位，
+       会被 clearCertView 清空。下载/复制按钮不用单独绑监听，靠 data-dl 与 data-copy 走事件委托。 -->
+  <section class="panel" id="p4" aria-labelledby="h4t">
+    <h2 id="h4t">签发与下载</h2>
+    <div class="msg" id="m4" hidden></div>
+    <div class="msg warn" id="m4mem" hidden></div>
+
+    <div class="actions" style="margin-top:0;border-top:0;padding-top:0">
+      <button type="button" class="ghost" data-go="3">上一步</button>
+      <button type="button" class="primary" id="btnFinalize">签发证书</button>
+    </div>
+
+    <div id="certArea" hidden style="margin-top:20px">
+      <div class="out" id="certInfoOut">
+        <div class="out-hd"><span class="t">证书信息</span></div>
+        <div id="certInfo"></div>
+      </div>
+
+      <div class="out">
+        <div class="out-hd">
+          <span class="t">cert.pem</span>
+          <span class="r">
+            <button type="button" class="small" data-dl="cert">下载</button>
+            <button type="button" class="small" data-copy="certPem">复制</button>
+          </span>
+        </div>
+        <pre id="certPem"></pre>
+      </div>
+
+      <div class="out">
+        <div class="out-hd">
+          <span class="t">key.pem</span>
+          <span class="r">
+            <button type="button" class="small" data-dl="key">下载</button>
+            <button type="button" class="small" data-copy="keyPem">复制</button>
+          </span>
+        </div>
+        <pre id="keyPem"></pre>
+      </div>
+
+      <div class="out">
+        <div class="out-hd">
+          <span class="t">全部信息 (.json)</span>
+          <span class="r">
+            <button type="button" class="small" data-dl="log">下载</button>
+            <button type="button" class="small" id="btnShowAll">查看内容</button>
+          </span>
+        </div>
+        <div class="rec" style="border-top:0">
+          <span class="rec-name" style="font-family:inherit">
+            含域名、邮箱、两把私钥、证书正文，以及部署与续期做法。
+            <strong>明文私钥，当密码保管。</strong>
+          </span>
+        </div>
+      </div>
+
+      <div class="msg warn" id="allInfoWarn" hidden></div>
+      <div class="out" id="allInfoOut" hidden>
+        <div class="out-hd">
+          <span class="t">全部信息预览</span>
+          <span class="r"><button type="button" class="small" data-copy="allInfoText">复制</button></span>
+        </div>
+        <pre id="allInfoText"></pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- 续期：独立入口（p5）。不在四步流程上，所以没有序号，也不参与「已完成」标记；
+       #renewText 由 refreshRenewState() 与预览共同填写。 -->
+  <section class="panel" id="p5" aria-labelledby="h5t">
+    <h2 id="h5t">证书续期</h2>
+
+    <p class="note" style="margin:0 0 16px">
+      续期的实质是带着原来的账户私钥重新签一张。同一账户的域名验证由 CA 保留
+      （Let's Encrypt 为 30 天），期内续期不需要重新加 DNS 记录；换新账户或超过
+      保留期，就要重新验证。
+    </p>
+
+    <div class="msg" id="mrenew" hidden></div>
+
+    <div class="field">
+      <label class="lbl">记录文件<span class="opt">上次导出的 .json</span></label>
+      <div class="drop" id="logDrop" tabindex="0" role="button">
+        拖入 .json 文件，或点击选择
+        <span class="drop-hint" id="dropHint">有的浏览器不支持选择文件，可以改用下面的粘贴方式</span>
+      </div>
+      <input type="file" id="logFile" accept=".json,application/json" hidden>
+
+      <details class="paste-wrap" id="pasteWrap">
+        <summary>或者直接粘贴文件内容</summary>
+        <textarea id="logPaste" rows="5" spellcheck="false"
+          placeholder="把 .json 文件的全部内容粘贴到这里"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button type="button" class="small" id="btnPasteImport">导入粘贴的内容</button>
+        </div>
+      </details>
+    </div>
+
+    <div class="field">
+      <label class="lbl">当前证书</label>
+      <div class="rec">
+        <span class="rec-name" id="renewText">
+          还没有导入记录文件。导入后这里会显示到期时间和建议。
+        </span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button type="button" class="primary" id="btnRenewGo" disabled>一键续期</button>
+    </div>
+  </section>
+
+</main>
+
+<dialog id="noticeDlg">
+  <div class="dlg-body">
+    <h3>使用须知</h3>
+    <ul class="notice-list">
+      <li>
+        <b>证书私钥会短暂经过本服务的服务器内存。</b>
+        签发完成后 60 秒即删除，不写入磁盘，进程也不记录请求内容；
+        理论上，本服务的运营者对这段内存有访问能力。
+        如果你不能接受这一点，请自行部署
+        （源码：<a href="https://github.com/yanzaiyun43/acmebox" target="_blank" rel="noopener noreferrer">github.com/yanzaiyun43/acmebox</a>，MIT 许可）。
+      </li>
+      <li>
+        <b>工具不替你写 DNS。</b>
+        所有验证用的 TXT 记录需要你手动添加，它不持有任何 DNS 服务商的写权限。
+      </li>
+      <li>
+        <b>选对 CA：默认是 Let's Encrypt 正式。</b>
+        正式证书会被浏览器信任，但会占用该域名的申请额度；
+        只想演练请选「Let's Encrypt 测试环境」，它签出的证书不被信任。
+      </li>
+      <li>
+        <b>证书和私钥只存在页面里。</b>
+        刷新或关闭页面即消失，服务端 60 秒后也删除。
+        「全部信息」文件含明文私钥，请当密码保管，不要发到公开位置。
+      </li>
+      <li>
+        <b>只申请你有控制权的域名。</b>
+        签发需要证明域名所有权，否则验证不会通过。
+      </li>
+    </ul>
+  </div>
+  <div class="dlg-foot">
+    <button type="button" class="primary" id="noticeOk">我知道了</button>
+  </div>
+</dialog>
+
+<dialog id="confirmDlg">
+  <div class="dlg-body">
+    <h3 id="dlgTitle">确认</h3>
+    <p id="dlgText"></p>
+  </div>
+  <div class="dlg-foot">
+    <button type="button" class="ghost" id="dlgCancel">取消</button>
+    <button type="button" class="primary" id="dlgOk">确定</button>
+  </div>
+</dialog>
+
+<dialog id="keyDlg">
+  <div class="dlg-body">
+    <h3 id="keyDlgTitle">手动填写私钥</h3>
+    <p>粘贴 PEM 格式的私钥。内容只发送到本服务的服务器内存，不写入磁盘，任务完成后自动回收。</p>
+    <textarea id="keyDlgInput" rows="6" spellcheck="false" placeholder="-----BEGIN PRIVATE KEY-----"></textarea>
+  </div>
+  <div class="dlg-foot">
+    <button type="button" class="ghost" id="keyDlgCancel">取消</button>
+    <button type="button" class="primary" id="keyDlgOk">确定</button>
+  </div>
+</dialog>
+
+<script src="/app.js"></script>
+</body>
+</html>
