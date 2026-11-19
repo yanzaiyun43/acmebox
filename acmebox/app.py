@@ -26,7 +26,7 @@ from urllib.parse import urlparse
 from . import acme
 
 VERSION = acme.VERSION
-SESSION_TTL = 6 * 3600          # 未完成的会话在内存里留六小时
+SESSION_TTL = 10 * 60            # 未完成的会话空闲 10 分钟就回收
 CERT_GRACE = 60                 # 证书签发后 60 秒就释放：用户已经拿到，要续期可再导入
 SWEEP_INTERVAL = 30             # 后台回收线程的节拍
 MAX_BODY = 512 * 1024           # 用户会整段贴回 PEM，留宽一点
@@ -121,7 +121,7 @@ class Session:
         """这份会话还能活多久。
 
         签发完成后实际是 60 秒宽限（CERT_GRACE），不是 SESSION_TTL；
-        再把 6 小时报给前端就是在说假话。
+        再把一个更长的时间报给前端就是在说假话。
         """
         left = SESSION_TTL - (time.time() - self.touched)
         if self.completed_at:
